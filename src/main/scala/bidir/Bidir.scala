@@ -58,7 +58,17 @@ object Bidir {
   }
 
   // terms (x): () | x | λx.e | e e | e:A
-  sealed abstract trait Term
+  sealed abstract class Term {
+    /** The type of this term. */
+    var tpe :Type = null
+    /** Sets the type of this term given a `(tpe, ctx)` pair. */
+    def entype (info :(Type, Context)) :(Type, Context) = {
+      tpe = Bidir.apply(info._1)(info._2)
+      info
+    }
+    /** Applies solutions in `ctx` to this term's type (and all subterms). */
+    def apply (ctx :Context) :Context = { tpe = Bidir.apply(tpe)(ctx) ; ctx }
+  }
   case object XUnit extends Term {
     override def toString = "()"
   }
@@ -66,13 +76,27 @@ object Bidir {
     override def toString = name
   }
   case class XLambda (arg :XVar, exp :Term) extends Term {
+    override def apply (ctx :Context) = {
+      arg.apply(ctx)
+      exp.apply(ctx)
+      super.apply(ctx)
+    }
     override def toString = s"(λ$arg.$exp)"
   }
   case class XApply (fun :Term, arg :Term) extends Term {
+    override def apply (ctx :Context) = {
+      fun.apply(ctx)
+      arg.apply(ctx)
+      super.apply(ctx)
+    }
     override def toString = s"($fun $arg)"
   }
-  case class XAnnot (exp :Term, tpe :Type) extends Term {
-    override def toString = s"($exp : $tpe)"
+  case class XAnnot (exp :Term, ann :Type) extends Term {
+    override def apply (ctx :Context) = {
+      exp.apply(ctx)
+      super.apply(ctx)
+    }
+    override def toString = s"($exp : $ann)"
   }
 
   // contexts (Γ,∆,Θ): · | Γ,α | Γ,x:A | Γ,â | Γ,â = τ | Γ,▶â
@@ -267,15 +291,16 @@ object Bidir {
 
   /** Checks that `exp` has type `tpe` with input context `ctx`. See Figure 11.
     * @return the output context. */
-  def check (exp :Term, tpe :Type)(implicit ctx :Context) :Context = (exp, tpe) match {
+  def check (exp :Term, tpe :Type)(implicit ctx :Context) :Context = exp.apply((exp, tpe) match {
     // 1I :: ((), 1)
     case (XUnit, TUnit) => ctx // Γ
 
     // ->I :: (λx.e, A→B)
-    case (XLambda(arg, exp), TArrow(argT, expT)) =>
+    case (XLambda(arg, body), TArrow(argT, bodyT)) =>
+      exp.tpe = tpe // we don't infer an term type for lambdas, so use the check type
       val argAssump = NAssump(arg, argT) // x:A
-      trace(s"- ->I ($exp <= $expT) in ${argAssump :: ctx}")
-      val deltaEtc = check(exp, expT)(argAssump :: ctx) // Γ,x:A ⊢ e ⇐ B ⊣ ∆,x:A,Θ
+      trace(s"- ->I ($body <= $bodyT) in ${argAssump :: ctx}")
+      val deltaEtc = check(body, bodyT)(argAssump :: ctx) // Γ,x:A ⊢ e ⇐ B ⊣ ∆,x:A,Θ
       peel(deltaEtc, argAssump) // ∆
 
     // ∀I :: (e, ∀α.A)
@@ -289,11 +314,11 @@ object Bidir {
       val (expType, theta) = infer(exp) // Γ ⊢ e ⇒ A ⊣ Θ
       trace(s"- Sub ($exp => $expType) ; [Θ]$expType <: [Θ]$tpe in $theta")
       subtype(apply(expType)(theta), apply(tpe)(theta))(theta) // Θ ⊢ [Θ]A <: [Θ]B ⊣ ∆
-  }
+  })
 
   /** Infers a type for `exp` with input context `ctx`. See Figure 11.
     * @return the inferred type and the output context. */
-  def infer (exp :Term)(implicit ctx :Context) :(Type, Context) = exp match {
+  def infer (exp :Term)(implicit ctx :Context) :(Type, Context) = exp.entype(exp match {
     // 1I=> :: ()
     case XUnit => (TUnit, ctx) // 1 ⊣ Γ
 
@@ -318,13 +343,15 @@ object Bidir {
       val (funType, theta) = infer(fun) // e1 ⇒ A ⊣ Θ
       val reducedFun = apply(funType)(theta) // [Θ]A
       trace(s"- ->E $fun => $funType ; $reducedFun ● $arg in $theta")
-      inferApp(reducedFun, arg)(theta) // C ⊣ ∆
+      val (resType, delta) = inferApp(reducedFun, arg)(theta) // C ⊣ ∆
+      fun.apply(delta)
+      (resType, delta)
 
     // Anno: x:A
-    case XAnnot(x, tpe) =>
-      tpe.checkWellFormed
-      (tpe, check(x, tpe)) // A ⊣ ∆
-  }
+    case XAnnot(x, ann) =>
+      ann.checkWellFormed
+      (ann, check(x, ann)) // A ⊣ ∆
+  })
 
   /** Infers the type of an application of a function of type `fun` to `exp`. See Figure 11.
     * @return the inferred type and the output context. */
@@ -358,11 +385,29 @@ object Bidir {
     trace(s"inferExpr $expr")
     val (tpe, delta) = infer(expr)(Nil)
     trace(s"∆ = $delta")
+    if (Trace) printTree(expr)
     Right(apply(tpe)(delta))
   } catch {
     case e :Exception => Left(e.getMessage)
   }
 
-  val Trace = false
+  def printTree (expr :Term, indent :String = "") :Unit = expr match {
+    case XUnit => println(indent + "() :: ()")
+    case XVar(name) => println(indent + name + " :: " + expr.tpe)
+    case XLambda(arg, exp) =>
+      println(indent + "λ :: " + expr.tpe)
+      printTree(arg, indent+" ")
+      printTree(exp, indent+" ")
+    case XApply(fun, arg) =>
+      println(indent + "● :: " + expr.tpe)
+      printTree(fun, indent+" ")
+      printTree(arg, indent+" ")
+    case XAnnot(exp, ann) =>
+      println(indent + ": :: " + expr.tpe)
+      printTree(exp, indent+" ")
+      println(indent+" "+ann)
+  }
+
+  val Trace = true
   private def trace (msg :String) = if (Trace) println(msg)
 }
