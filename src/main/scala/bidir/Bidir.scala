@@ -182,12 +182,12 @@ object Bidir {
 
     // <:InstantiateL :: Γ[â] ⊢ â <: A ⊣ ∆
     case (eA :TEVar, a) if (ctx.contains(eA) && !a.containsFree(eA)) =>
-      trace(s"<:InstL $eA :=< $a")
+      trace(s"- <:InstL $eA :=< $a")
       instantiateL(eA, a) // Γ[â] ⊢ â :=< A ⊣ ∆
 
     // <:InstantiateR :: Γ[â] ⊢ A <: â ⊣ ∆
     case (a, eA :TEVar) if (ctx.contains(eA) && !a.containsFree(eA)) =>
-      trace(s"<:InstR $a :=< $eA")
+      trace(s"- <:InstR $a :=< $eA")
       instantiateR(a, eA) // Γ[â] ⊢ A <: â ⊣ ∆
 
     case _ => fail(s"Type mismatch: expected '$tpeB', given: '$tpeA'")
@@ -199,13 +199,13 @@ object Bidir {
     // InstLSolve :: Γ,â,Γ′ ⊢ â :=< τ ⊣ Γ,â=τ,Γ′
     case a if (a.isMono && a.isWellFormed(peel(ctx, eA))) /* Γ ⊢ τ */ =>
       val Some((postCtx, preCtx)) = split(ctx, eA)
-      trace(s"InstLSolve $eA :=< $a")
+      trace(s"- InstLSolve $eA :=< $a")
       postCtx ++ (NSol(eA, a) :: preCtx) // Γ,â=τ,Γ′
 
     // InstLReach :: Γ[â][ĉ] ⊢ â :=< ĉ ⊣ Γ[â][ĉ=â]
     case eC :TEVar if (peel(ctx, eC) contains eA) =>
       val Some((postCtx, preCtx)) = split(ctx, eC)
-      trace(s"InstLReach $eA :=< $eC")
+      trace(s"- InstLReach $eA :=< $eC")
       postCtx ++ (NSol(eC, eA) :: preCtx) // Γ[â][ĉ=â]
 
     // InstLArr :: Γ[â] ⊢ â :=< A1 → A2 ⊣ ∆
@@ -214,14 +214,14 @@ object Bidir {
       val eA1 = freshEVar("a₁")
       val eA2 = freshEVar("a₂")
       val a1ctx = postCtx ++ (NSol(eA, TArrow(eA1, eA1)) :: eA1 :: eA2 :: preCtx)
-      trace(s"InstLArr(1) $a1 :=< $eA1 in $a1ctx")
+      trace(s"- InstLArr(1) $a1 :=< $eA1 in $a1ctx")
       val theta = instantiateR(a1, eA1)(a1ctx) // Γ[â₂,â₁,â=â₁→â2] ⊢ A1 :=< â₁ ⊣ Θ
-      trace(s"InstRArr(2) $eA2 :=< ${apply(a2)(theta)} in $theta")
+      trace(s"- InstRArr(2) $eA2 :=< ${apply(a2)(theta)} in $theta")
       instantiateL(eA2, apply(a2)(theta))(theta) // Θ ⊢ â₂ :=< [Θ]A2 ⊣ ∆
 
     // InstLAllR :: Γ[â] ⊢ â :=< ∀β.B ⊣ ∆
     case TAll(uB, b) if (ctx contains eA) =>
-      trace(s"InstLAllR $eA :=< $b in ${uB :: ctx}")
+      trace(s"- InstLAllR $eA :=< $b in ${uB :: ctx}")
       val deltaEtc = instantiateL(eA, b)(uB :: ctx) // Γ[â],β ⊢ â :=< B ⊣ ∆,β,∆′
       peel(deltaEtc, uB) // ∆
 
@@ -234,13 +234,13 @@ object Bidir {
     // InstRSolve :: Γ,â,Γ′ ⊢ τ :=< â ⊣ Γ,â=τ,Γ′
     case a if (a.isMono && a.isWellFormed(peel(ctx, eA))) /* Γ ⊢ τ */ =>
       val Some((postCtx, preCtx)) = split(ctx, eA)
-      trace(s"InstRSolve $a :=< $eA")
+      trace(s"- InstRSolve $a :=< $eA")
       postCtx ++ (NSol(eA, a) :: preCtx) // Γ,â=τ,Γ′
 
     // InstRReach :: Γ[â][ĉ] ⊢ ĉ :=< â ⊣ Γ[â][ĉ=â]
     case eC :TEVar if (peel(ctx, eC) contains eA) =>
       val Some((postCtx, preCtx)) = split(ctx, eC)
-      trace(s"InstRReach $eC :=< $eA")
+      trace(s"- InstRReach $eC :=< $eA")
       postCtx ++ (NSol(eC, eA) :: preCtx) // Γ[â][ĉ = â]
 
     // InstRArr :: Γ[â] ⊢ A1 → A2 :=< â ⊣ ∆
@@ -249,16 +249,16 @@ object Bidir {
       val eA1 = freshEVar("a₁")
       val eA2 = freshEVar("a₂")
       val a1ctx = postCtx ++ (NSol(eA, TArrow(eA1, eA1)) :: eA1 :: eA2 :: preCtx)
-      trace(s"InstRArr(1) $eA1 :=< $a1 in $a1ctx")
+      trace(s"- InstRArr(1) $eA1 :=< $a1 in $a1ctx")
       val theta = instantiateL(eA1, a1)(a1ctx) // Γ[â₂,â₁,â=â₁→â₂] ⊢ â₁ :=< A1 ⊣ Θ
-      trace(s"InstRArr(2) ${apply(a2)(theta)} :=< $eA2 in $theta")
+      trace(s"- InstRArr(2) ${apply(a2)(theta)} :=< $eA2 in $theta")
       instantiateR(apply(a2)(theta), eA2)(theta) // Θ ⊢ [Θ]A2 :=< â₂ ⊣ ∆
 
     // InstRAllL :: Γ[â],▶ĉ,ĉ ⊢ [ĉ/β]B :=< â ⊣ ∆,▶ĉ,∆′
     case TAll(uB, b) if (ctx contains eA) =>
       val eC = freshEVar("c")
       val instCtx = eC :: NMark(eC) :: ctx // Γ[â],▶ĉ,ĉ
-      trace(s"InstRAllL [$eC/$uB]$b :=< $eA in $instCtx")
+      trace(s"- InstRAllL [$eC/$uB]$b :=< $eA in $instCtx")
       val deltaEtc = instantiateR(subst(eC, uB, b), eA)(instCtx) // Γic ⊢ [ĉ/β]B :=< â ⊣ ∆,▶ĉ,∆′
       peel(deltaEtc, NMark(eC)) // ∆
 
@@ -274,19 +274,20 @@ object Bidir {
     // ->I :: (λx.e, A→B)
     case (XLambda(arg, exp), TArrow(argT, expT)) =>
       val argAssump = NAssump(arg, argT) // x:A
-      trace(s"->I ($exp : $expT) in ${argAssump :: ctx}")
+      trace(s"- ->I ($exp <= $expT) in ${argAssump :: ctx}")
       val deltaEtc = check(exp, expT)(argAssump :: ctx) // Γ,x:A ⊢ e ⇐ B ⊣ ∆,x:A,Θ
       peel(deltaEtc, argAssump) // ∆
 
     // ∀I :: (e, ∀α.A)
     case (exp, TAll(uA, tpe)) =>
+      trace(s"- ∀I ($exp <= $tpe) in ${uA :: ctx}")
       val deltaEtc = check(exp, tpe)(uA :: ctx) // Γ,α ⊢ e ⇐ A ⊣ ∆,α,Θ
       peel(deltaEtc, uA) // ∆
 
     // Sub :: (e, B)
     case (exp, tpe) =>
       val (expType, theta) = infer(exp) // Γ ⊢ e ⇒ A ⊣ Θ
-      trace(s"Sub ($exp : $expType) <: $tpe in $theta")
+      trace(s"- Sub ($exp => $expType) ; [Θ]$expType <: [Θ]$tpe in $theta")
       subtype(apply(expType)(theta), apply(tpe)(theta))(theta) // Θ ⊢ [Θ]A <: [Θ]B ⊣ ∆
   }
 
@@ -303,26 +304,26 @@ object Bidir {
     }
 
     // ->I=> :: λx.e
-    case XLambda(arg, exp) =>
+    case XLambda(arg, body) =>
       val eA = freshEVar("a") // â
       val eC = freshEVar("c") // ĉ
       val assump = NAssump(arg, eA) // x:â
       val checkCtx = assump :: eC :: eA :: ctx // Γ,â,ĉ,x:â
-      trace(s"->I=> ($exp : $eC) in $checkCtx")
-      val checkedCtx = check(exp, eC)(checkCtx) // e ⇐ ĉ ⊣ ∆,x:â,Θ
+      trace(s"- ->I=> ($body <= $eC) in $checkCtx")
+      val checkedCtx = check(body, eC)(checkCtx) // e ⇐ ĉ ⊣ ∆,x:â,Θ
       (TArrow(eA, eC), peel(checkedCtx, assump)) // â→ĉ ⊣ ∆
 
     // ->E :: (e1 e2)
     case XApply(fun, arg) =>
       val (funType, theta) = infer(fun) // e1 ⇒ A ⊣ Θ
       val reducedFun = apply(funType)(theta) // [Θ]A
-      trace(s"->E inferApp $reducedFun $arg in $theta")
+      trace(s"- ->E $fun => $funType ; $reducedFun ● $arg in $theta")
       inferApp(reducedFun, arg)(theta) // C ⊣ ∆
 
     // Anno: x:A
-    case XAnnot(exp, tpe) =>
+    case XAnnot(x, tpe) =>
       tpe.checkWellFormed
-      (tpe, check(exp, tpe)) // A ⊣ ∆
+      (tpe, check(x, tpe)) // A ⊣ ∆
   }
 
   /** Infers the type of an application of a function of type `fun` to `exp`. See Figure 11.
@@ -333,7 +334,7 @@ object Bidir {
       val eA = freshEVar("a") // â
       val reduced = subst(eA, uv, tpe) // [â/α]A
       val appCtx = eA :: ctx // Γ,â
-      trace(s"∀App $reduced ● $exp in $appCtx")
+      trace(s"- ∀App $reduced ● $exp in $appCtx")
       inferApp(reduced, exp)(appCtx) // C ⊣ ∆
     // âApp
     case eA :TEVar =>
@@ -343,7 +344,7 @@ object Bidir {
       val Some((postCtx, preCtx)) = split(ctx, eA) // Γpre[â]post
       val checkCtx = postCtx ++ (
         NSol(eA, aArrow) :: a1 :: a2 :: preCtx) // Γpre[â₂,â₁,â=â₁→â₂]post
-      trace(s"âApp $exp <= $a1 in $checkCtx")
+      trace(s"- âApp $exp <= $a1 in $checkCtx")
       (a2, check(exp, a1)(checkCtx)) // â₂ ⊣ ∆
     // ->App
     case TArrow(argT, resT) => // A→C
@@ -356,6 +357,7 @@ object Bidir {
     nextEVar = 1 // makes error messages less arbitrary
     trace(s"inferExpr $expr")
     val (tpe, delta) = infer(expr)(Nil)
+    trace(s"∆ = $delta")
     Right(apply(tpe)(delta))
   } catch {
     case e :Exception => Left(e.getMessage)
