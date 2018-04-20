@@ -10,13 +10,15 @@ class BidirTest {
     assertEquals(Right(TUnit), inferExpr(XUnit))
   }
 
-  val xV = XVar("x")
-  val yV = XVar("y")
-  val fV = XVar("f")
+  def xV = XVar("x")
+  def yV = XVar("y")
+  def fV = XVar("f")
+  def aTV = TUVar("a")
 
   // id :: (forall a. a -> a)
+  def idType = TAll(aTV, TArrow(aTV, aTV))
   // id x = x
-  val idExpr = XLambda(xV, xV)
+  def idExpr = XLambda(xV, xV)
 
   @Test def testSplit () :Unit = {
     val aUV = TUVar("a")
@@ -35,22 +37,25 @@ class BidirTest {
 
   // hof :: (forall a. () -> a) -> a
   // hof f = f ()
-  val hofExpr = XLambda(fV, XApply(fV, XUnit))
+  def hofUnitExpr = XLambda(fV, XApply(fV, XUnit))
+  // hof :: (forall a. Bool -> a) -> a
+  // hof f = f true
+  def hofBoolExpr = XLambda(fV, XApply(fV, XTrue))
 
   @Test def testHOF () :Unit = {
-    assertEquals(Right(TUnit), inferExpr(XApply(hofExpr, idExpr)))
+    assertEquals(Right(TUnit), inferExpr(XApply(hofUnitExpr, idExpr)))
+    assertEquals(Right(TBool), inferExpr(XApply(hofBoolExpr, idExpr)))
   }
 
   @Test def testError () :Unit = {
     assertEquals(Left("Type mismatch: expected '(() -> ^a₂4)', given: '()'"),
-                 inferExpr(XApply(hofExpr, XUnit)))
+                 inferExpr(XApply(hofUnitExpr, XUnit)))
   }
 
-  val aTV = TUVar("a")
   // hrf :: (forall a. (a -> a)) -> ()
-  val hrfType = TArrow(TAll(aTV, TArrow(aTV, aTV)), TUnit)
+  def hrfType = TArrow(TAll(aTV, TArrow(aTV, aTV)), TUnit)
   // hrf f = (f id) (f ())
-  val hrfExpr = XLambda(fV, XApply(XApply(fV, idExpr), XApply(fV, XUnit)))
+  def hrfExpr = XLambda(fV, XApply(XApply(fV, idExpr), XApply(fV, XUnit)))
 
   @Test def testHigherRank () :Unit = {
     assertEquals(Left("Type mismatch: expected '(^a₂8 -> ^a₂8)', given: '()'"),
@@ -59,5 +64,18 @@ class BidirTest {
                  inferExpr(XAnnot(hrfExpr, hrfType))) // (hrf : hrfType)
     assertEquals(Right(TUnit),
                  inferExpr(XApply(XAnnot(hrfExpr, hrfType), idExpr))) // ((hrf : hrfType) id)
+  }
+
+  @Test def testLet () :Unit = {
+    // let y = (λx.x) false in y
+    assertEquals(Right(TBool), inferExpr(XLet(yV, XApply(idExpr, XFalse), yV)))
+    // let y = (λx.x) in (y false)
+    assertEquals(Right(TBool), inferExpr(XLet(yV, idExpr, XApply(yV, XFalse))))
+    // let f = (λx.x) in let y = (λx.x) in ((f y) false)
+    val yLetE = XLet(yV, idExpr, XApply(XApply(fV, yV), XFalse))
+    assertEquals(Right(TBool), inferExpr(XLet(fV, idExpr, yLetE)))
+    // let f = (λx.x) : (forall a. a -> a) in let y = (λx.x) in ((f y) (f false))
+    val yLetU = XLet(yV, idExpr, XApply(XApply(fV, yV), XApply(fV, XFalse)))
+    assertEquals(Right(TBool), inferExpr(XLet(fV, XAnnot(idExpr, idType), yLetU)))
   }
 }

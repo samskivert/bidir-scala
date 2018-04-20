@@ -31,6 +31,11 @@ object Bidir {
     def checkMalformed (implicit ctx :Context) = None
     override def toString = "()"
   }
+  case object TBool extends Type {
+    def containsFree (eV :TEVar) :Boolean = false
+    def checkMalformed (implicit ctx :Context) = None
+    override def toString = "Bool"
+  }
   case class TUVar (name :String) extends Type with Note {
     def containsFree (eV :TEVar) :Boolean = false
     def checkMalformed (implicit ctx :Context) =
@@ -72,6 +77,12 @@ object Bidir {
   case object XUnit extends Term {
     override def toString = "()"
   }
+  case object XTrue extends Term {
+    override def toString = "true"
+  }
+  case object XFalse extends Term {
+    override def toString = "false"
+  }
   case class XVar (name :String) extends Term {
     override def toString = name
   }
@@ -97,6 +108,15 @@ object Bidir {
       super.apply(ctx)
     }
     override def toString = s"($exp : $ann)"
+  }
+  case class XLet (v :XVar, exp :Term, body :Term) extends Term {
+    override def apply (ctx :Context) = {
+      v.apply(ctx)
+      exp.apply(ctx)
+      body.apply(ctx)
+      super.apply(ctx)
+    }
+    override def toString = s"let $v = $exp in $body"
   }
 
   // contexts (Γ,∆,Θ): · | Γ,α | Γ,x:A | Γ,â | Γ,â = τ | Γ,▶â
@@ -294,10 +314,15 @@ object Bidir {
   def check (exp :Term, tpe :Type)(implicit ctx :Context) :Context = exp.apply((exp, tpe) match {
     // 1I :: ((), 1)
     case (XUnit, TUnit) => ctx // Γ
+    // TI :: (T, Bool)
+    case (XTrue, TBool) => ctx // Γ
+    // FI :: (F, Bool)
+    case (XFalse, TBool) => ctx // Γ
 
     // ->I :: (λx.e, A→B)
     case (XLambda(arg, body), TArrow(argT, bodyT)) =>
-      exp.tpe = tpe // we don't infer an term type for lambdas, so use the check type
+      exp.tpe = tpe  // lambda types are not always synthesized, so we also assign lambda AST
+      arg.tpe = argT // nodes a type during checking, ditto for the lambda argument nodes
       val argAssump = NAssump(arg, argT) // x:A
       trace(s"- ->I ($body <= $bodyT) in ${argAssump :: ctx}")
       val deltaEtc = check(body, bodyT)(argAssump :: ctx) // Γ,x:A ⊢ e ⇐ B ⊣ ∆,x:A,Θ
@@ -321,6 +346,10 @@ object Bidir {
   def infer (exp :Term)(implicit ctx :Context) :(Type, Context) = exp.entype(exp match {
     // 1I=> :: ()
     case XUnit => (TUnit, ctx) // 1 ⊣ Γ
+    // BoolI=> :: T
+    case XTrue => (TBool, ctx) // Bool ⊣ Γ
+    // BoolI=> :: F
+    case XFalse => (TBool, ctx) // Bool ⊣ Γ
 
     // Var :: x
     case v @ XVar(name) => assump(v) match {
@@ -328,11 +357,23 @@ object Bidir {
       case None      => fail(s"No binding for variable '$name'")
     }
 
+    // Let=> :: let x = exp in body
+    case XLet(x, exp, body) =>
+      val (expType, theta) = infer(exp)
+      val eC = freshEVar("c")
+      val assump = NAssump(x, expType)
+      x.tpe = expType // assign type to var node, which is not separately entyped
+      val checkCtx = assump :: eC :: theta
+      trace(s"- Let=> ($body <= $eC) in $checkCtx")
+      val checkedCtx = check(body, eC)(checkCtx)
+      (eC, peel(checkedCtx, assump))
+
     // ->I=> :: λx.e
     case XLambda(arg, body) =>
       val eA = freshEVar("a") // â
       val eC = freshEVar("c") // ĉ
       val assump = NAssump(arg, eA) // x:â
+      arg.tpe = eA // assign type to arg node, which is not separately entyped
       val checkCtx = assump :: eC :: eA :: ctx // Γ,â,ĉ,x:â
       trace(s"- ->I=> ($body <= $eC) in $checkCtx")
       val checkedCtx = check(body, eC)(checkCtx) // e ⇐ ĉ ⊣ ∆,x:â,Θ
@@ -384,6 +425,9 @@ object Bidir {
     nextEVar = 1 // makes error messages less arbitrary
     trace(s"inferExpr $expr")
     val (tpe, delta) = infer(expr)(Nil)
+    // apply the final context to the top-level term, which will have only been inferred and not
+    // checked (checking is where we normally apply contexts)
+    expr.apply(delta)
     trace(s"∆ = $delta")
     if (Trace) printTree(expr)
     Right(apply(tpe)(delta))
@@ -393,7 +437,14 @@ object Bidir {
 
   def printTree (expr :Term, indent :String = "") :Unit = expr match {
     case XUnit => println(indent + "() :: ()")
+    case XTrue => println(indent + "true :: Bool")
+    case XFalse => println(indent + "false :: Bool")
     case XVar(name) => println(indent + name + " :: " + expr.tpe)
+    case XLet(x, exp, body) =>
+      println(indent + "let :: " + expr.tpe)
+      printTree(x,    indent+" ")
+      printTree(exp,  indent+" ")
+      printTree(body, indent+" ")
     case XLambda(arg, exp) =>
       println(indent + "λ :: " + expr.tpe)
       printTree(arg, indent+" ")
