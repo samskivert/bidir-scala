@@ -118,6 +118,15 @@ object Bidir {
     }
     override def toString = s"let $v = $exp in $body"
   }
+  case class XIf (test :Term, ifTrue :Term, ifFalse :Term) extends Term {
+    override def apply (ctx :Context) = {
+      test.apply(ctx)
+      ifTrue.apply(ctx)
+      ifFalse.apply(ctx)
+      super.apply(ctx)
+    }
+    override def toString = s"if $test $ifTrue else $ifFalse"
+  }
 
   // contexts (Γ,∆,Θ): · | Γ,α | Γ,x:A | Γ,â | Γ,â = τ | Γ,▶â
   sealed abstract trait Note
@@ -198,6 +207,7 @@ object Bidir {
   def subtype (tpeA :Type, tpeB :Type)(implicit ctx :Context) :Context = (tpeA, tpeB) match {
     // <:Unit :: Γ ⊢ 1 <: 1 ⊣ Γ
     case (TUnit, TUnit) => ctx // Γ
+    case (TBool, TBool) => ctx // Γ
 
     // <:Var :: Γ[α] ⊢ α <: α ⊣ Γ[α]
     case (uva :TUVar, uvb :TUVar) if (uva == uvb) => ctx // Γ
@@ -334,6 +344,17 @@ object Bidir {
       val deltaEtc = check(exp, tpe)(uA :: ctx) // Γ,α ⊢ e ⇐ A ⊣ ∆,α,Θ
       peel(deltaEtc, uA) // ∆
 
+    // If :: (if test ifTrue else ifFalse, T)
+    case (XIf(test, ifTrue, ifFalse), tpe) =>
+      exp.tpe = tpe
+      trace(s"- If ($test <= Bool) in $ctx")
+      check(test, TBool)
+      trace(s"- If ($ifTrue <= $tpe) in $ctx")
+      check(ifTrue, tpe)
+      trace(s"- If ($ifFalse <= $tpe) in $ctx")
+      check(ifFalse, tpe)
+      // peel?
+
     // Sub :: (e, B)
     case (exp, tpe) =>
       val (expType, theta) = infer(exp) // Γ ⊢ e ⇒ A ⊣ Θ
@@ -367,6 +388,14 @@ object Bidir {
       trace(s"- Let=> ($body <= $eC) in $checkCtx")
       val checkedCtx = check(body, eC)(checkCtx)
       (eC, peel(checkedCtx, assump))
+
+    // If=> :: if test ifTrue else ifFalse
+    case XIf(test, ifTrue, ifFalse) =>
+      check(test, TBool)
+      val (trueType, theta) = infer(ifTrue)
+      trace(s"- If=> ($ifTrue => $trueType) ; ($ifFalse <= $trueType) in $theta")
+      val delta = check(ifFalse, trueType)(theta)
+      (trueType, delta) // TODO: peel?
 
     // ->I=> :: λx.e
     case XLambda(arg, body) =>
@@ -440,6 +469,11 @@ object Bidir {
     case XTrue => println(indent + "true :: Bool")
     case XFalse => println(indent + "false :: Bool")
     case XVar(name) => println(indent + name + " :: " + expr.tpe)
+    case XIf(test, ifT, ifF) =>
+      println(indent + "if :: " + expr.tpe)
+      printTree(test, indent+" ")
+      printTree(ifT, indent+" ")
+      printTree(ifF, indent+" ")
     case XLet(x, exp, body) =>
       println(indent + "let :: " + expr.tpe)
       printTree(x,    indent+" ")

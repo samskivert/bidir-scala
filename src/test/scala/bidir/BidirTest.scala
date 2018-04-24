@@ -78,4 +78,11 @@ class BidirTest {
     val yLetU = XLet(yV, idExpr, XApply(XApply(fV, yV), XApply(fV, XFalse)))
     assertEquals(Right(TBool), inferExpr(XLet(fV, XAnnot(idExpr, idType), yLetU)))
   }
+
+  @Test def testIf () :Unit = {
+    assertEquals(Right(TBool), inferExpr(XIf(XFalse, XFalse, XTrue)))
+    assertEquals(Right(TUnit), inferExpr(XIf(XIf(XFalse, XFalse, XTrue), XUnit, XUnit)))
+    assertEquals(Right(TBool), inferExpr(XIf(XFalse, XApply(idExpr, XFalse), XTrue)))
+    assertEquals(Right(TBool), inferExpr(XIf(XFalse, XTrue, XApply(idExpr, XFalse))))
+  }
 }
