@@ -164,7 +164,7 @@ object Bidir {
 
     // <:→ :: Γ ⊢ A1→A2 <: B1→B2 ⊣ ∆
     case (TArrow(a1, a2), TArrow(b1, b2)) =>
-      val theta = subtype(b1, a2) // Γ ⊢ B1 <: A1 ⊣ Θ
+      val theta = subtype(b1, a1) // Γ ⊢ B1 <: A1 ⊣ Θ
       subtype(apply(a2)(theta), apply(b2)(theta))(theta) // Θ ⊢ [Θ]A2 <: [Θ]B2 ⊣ ∆
 
     // <:∀L :: Γ ⊢ ∀α.A <: B ⊣ ∆
@@ -213,7 +213,7 @@ object Bidir {
       val Some((postCtx, preCtx)) = split(ctx, eA)
       val eA1 = freshEVar("a₁")
       val eA2 = freshEVar("a₂")
-      val a1ctx = postCtx ++ (NSol(eA, TArrow(eA1, eA1)) :: eA1 :: eA2 :: preCtx)
+      val a1ctx = postCtx ++ (NSol(eA, TArrow(eA1, eA2)) :: eA1 :: eA2 :: preCtx)
       trace(s"- InstLArr(1) $a1 :=< $eA1 in $a1ctx")
       val theta = instantiateR(a1, eA1)(a1ctx) // Γ[â₂,â₁,â=â₁→â2] ⊢ A1 :=< â₁ ⊣ Θ
       trace(s"- InstRArr(2) $eA2 :=< ${apply(a2)(theta)} in $theta")
@@ -248,7 +248,7 @@ object Bidir {
       val Some((postCtx, preCtx)) = split(ctx, eA)
       val eA1 = freshEVar("a₁")
       val eA2 = freshEVar("a₂")
-      val a1ctx = postCtx ++ (NSol(eA, TArrow(eA1, eA1)) :: eA1 :: eA2 :: preCtx)
+      val a1ctx = postCtx ++ (NSol(eA, TArrow(eA1, eA2)) :: eA1 :: eA2 :: preCtx)
       trace(s"- InstRArr(1) $eA1 :=< $a1 in $a1ctx")
       val theta = instantiateL(eA1, a1)(a1ctx) // Γ[â₂,â₁,â=â₁→â₂] ⊢ â₁ :=< A1 ⊣ Θ
       trace(s"- InstRArr(2) ${apply(a2)(theta)} :=< $eA2 in $theta")
