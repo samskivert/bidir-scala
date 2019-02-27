@@ -8,7 +8,6 @@ lazy val root = (project in file(".")).
     scalacOptions += "-Ywarn-unused:params,-implicits",
 
     libraryDependencies ++= Seq(
-      "com.lihaoyi" %% "fastparse" % "1.0.0",
       "com.novocode" % "junit-interface" % "0.11" % "test"
     )
   )
